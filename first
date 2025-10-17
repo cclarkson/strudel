@@ -1,27 +1,55 @@
 samples('github:switchangel/breaks')
 setCps(170/60/4)
 
+register('fill', function (pat) {
+  return new Pattern(function (state) {
+    const lookbothways = 1;
+    // Expand the query window
+    const haps = pat.query(state.withSpan(span => new TimeSpan(span.begin.sub(lookbothways), span.end.add(lookbothways))));
+    const onsets = haps.map(hap => hap.whole.begin)
+      // sort fractions
+      .sort((a, b) => a.compare(b))
+      // make unique
+      .filter((x, i, arr) => i == (arr.length - 1) || x.ne(arr[i + 1]));
+    const newHaps = [];
+    for (const hap of haps) {
+      // Ingore if the part starts after the original query
+      if (hap.part.begin.gte(state.span.end)) {
+        continue;
+      }
 
-// $: s("bd:2!4").distort("4:0.2")
+      // Find the next onset, to use as an offset
+      const next = onsets.find(onset => onset.gte(hap.whole.end));
 
+      // Ignore if the part ended before the original query, and hasn't expanded inside
+      if (next.lte(state.span.begin)) {
+        continue;
+      }
 
-// $: s("breaks/2")
-//   .fit()
-//   .scrub(irand(16).div(16).seg(8)
-//   .rib("2",4).distort("4:0.3")
-//         )
-// .orbit(2)
-// ._scope()
+      const whole = new TimeSpan(hap.whole.begin, next);
+      // Constrain part to original query
+      const part = new TimeSpan(hap.part.begin.max(state.span.begin), next.min(state.span.end));
+      newHaps.push(new Hap(whole, part, hap.value, hap.context, hap.stateful));
+    }
+    return newHaps;
+  });
+});
 
-// $: n("<3@3 4 5 @3 6>*2".add("-14, -21")).scale("g:minor").s("supersaw").lpf(3000).lpenv(2)
+$: s("breaks/2")
+  .fit()
+  .scrub(irand(16).div(16).seg(8)
+  .rib(5,4).distort("4:0.3")
+        )
+.orbit(2)
+._scope()
+
+$: s("bd:2!4").distort("4:0.2")
+
+$: n("<3@3 4 5 @3 6>*2".add("-14, -21")).scale("g:minor").s("supersaw").lpf(3000).lpenv(2)
 
 $: n("0@2 <-7 [-5 -2]>@3 <0 -3 2 1>@3".add(7))
   .scale("g:minor")
-  .s("supersaw")
+  .s("supersaw").distort("8:0.1")
+  .struct(rand.mul(1.5).round().seg(16).rib(45,1)).fill().clip(0.7)
   .lpf(3000).lpenv(2).delay(.7).pan(rand).lpf(8000).lpenv(4)
   ._pianoroll()
-
-register('trancegate', (density, seed, length, x) => {
-    return x.struct(rand.mul(density).round().seg(16).rib(seed, length)).fill().clip(.7)
-})
-.struct(rand.mul(1.5).round().seg(16).rib(45, 1)).fill().clip(0.9)
